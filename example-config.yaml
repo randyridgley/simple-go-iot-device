@@ -1,0 +1,12 @@
+server:
+  port: 8883
+  endpoint: <AWS IoT Endpoint>
+
+bootstrap:
+  privatekeypath:    "certs/provision-claim.private.key"
+  certificatepath:   "certs/provision-claim.certificate.pem"
+  cacertificatepath: "certs/root.ca.bundle.pem"
+  provisioningTemplate: "FleetProvisioningTemplate"
+
+serialNumber: "1234567890"
+deviceLocation: "USA"
