@@ -18,6 +18,7 @@ package config
 type Configurations struct {
 	Server         ServerConfigurations
 	Bootstrap      BootstrapConfigurations
+	Primary        PrimaryConfigurations
 	SerialNumber   string
 	DeviceLocation string
 }
@@ -28,10 +29,16 @@ type ServerConfigurations struct {
 	Endpoint string
 }
 
-// DatabaseConfigurations exported
+// BootstrapConfigurations exported
 type BootstrapConfigurations struct {
 	PrivateKeyPath       string
 	CertificatePath      string
 	CACertificatePath    string
 	ProvisioningTemplate string
+}
+
+// BootstrapConfigurations exported
+type PrimaryConfigurations struct {
+	PrivateKeyPath  string
+	CertificatePath string
 }

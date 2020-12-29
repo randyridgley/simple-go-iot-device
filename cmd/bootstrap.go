@@ -52,22 +52,24 @@ to quickly create a Cobra application.`,
 			fmt.Printf("Unable to decode into struct, %v", err)
 		}
 
-		thingName := generateThingName()
-
-		thing, err := device.NewThing(
-			device.KeyPair{
+		thingConfig := device.ThingConfiguration{
+			ThingName: generateThingName(),
+			KeyPair: device.KeyPair{
 				PrivateKeyPath:    configuration.Bootstrap.PrivateKeyPath,
 				CertificatePath:   configuration.Bootstrap.CertificatePath,
 				CACertificatePath: configuration.Bootstrap.CACertificatePath,
 			},
-			thingName,
-			configuration,
-		)
+			DeviceLocation:       configuration.DeviceLocation,
+			SerialNumber:         configuration.SerialNumber,
+			ProvisioningTemplate: configuration.Bootstrap.ProvisioningTemplate,
+			Endpoint:             configuration.Server.Endpoint,
+			Port:                 configuration.Server.Port,
+		}
+
+		thing, err := device.NewThing(thingConfig)
 		check(err)
 
-		go thing.CreateKeysAndCertificate()
-		go thing.CreateThing()
-		go thing.Start()
+		thing.Connect()
 
 		quit := make(chan struct{})
 		c := make(chan os.Signal, 1)
