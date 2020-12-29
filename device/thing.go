@@ -146,15 +146,16 @@ func (t *Thing) Start() {
 	for {
 		select {
 		case result := <-t.startChan:
+			certFileName := fmt.Sprintf("certs/%s.certificate.pem", t.config.ThingName)
+			keyFileName := fmt.Sprintf("certs/%s.private.key", t.config.ThingName)
+
 			switch {
 			case result == "ACCEPTED":
 				fmt.Println("Accepted thing...")
-				certFileName := fmt.Sprintf("%s.certificate.pem", t.config.ThingName)
-				keyFileName := fmt.Sprintf("%s.private.key", t.config.ThingName)
 
 				if &t.RegisterThingResponse != nil {
 					// save the keys if need to otherwise start connecting and sending data
-					f, err := os.Create(fmt.Sprintf("certs/%s", certFileName))
+					f, err := os.Create(fmt.Sprintf("%s", certFileName))
 
 					if err != nil {
 						log.Fatal(err)
@@ -167,9 +168,9 @@ func (t *Thing) Start() {
 					if err2 != nil {
 						log.Fatal(err2)
 					}
-					viper.Set("primary.certificatepath", fmt.Sprintf("certs/%s", certFileName))
+					viper.Set("primary.certificatepath", fmt.Sprintf("%s", certFileName))
 
-					f, err = os.Create(fmt.Sprintf("certs/%s", keyFileName))
+					f, err = os.Create(fmt.Sprintf("%s", keyFileName))
 
 					if err != nil {
 						log.Fatal(err)
@@ -182,15 +183,27 @@ func (t *Thing) Start() {
 					if err2 != nil {
 						log.Fatal(err2)
 					}
-					viper.Set("primary.privatekeypath", fmt.Sprintf("certs/%s", keyFileName))
+					viper.Set("primary.privatekeypath", fmt.Sprintf("%s", keyFileName))
 					viper.WriteConfig()
 					fmt.Printf("wrote files: cert_file_name: %v key_file_name: %v\n", certFileName, keyFileName)
 				}
+				t.Client.Disconnect(250)
 				t.startChan <- "READY"
 				fmt.Println("Moving to ready state")
 			case result == "READY":
 				fmt.Println("Starting device.")
+				t.config.KeyPair.CertificatePath = certFileName
+				t.config.KeyPair.PrivateKeyPath = keyFileName
+				c, _ := createMQTTClient(&t.config)
+				t.Client = c
+				// connect to MQTT endpoint
+				if token := t.Client.Connect(); token.Wait() && token.Error() != nil {
+					fmt.Printf("%v", token.Error())
+				}
 
+				payload := "{\"let-me\": \"in\"}"
+				t.Client.Publish("fleet/2974685", 1, false, payload)
+				fmt.Println("Published message")
 			case result == "REJECTED":
 				fmt.Printf("Failed response %v", t.RegisterThingResponse)
 
