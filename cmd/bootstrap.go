@@ -23,15 +23,26 @@ import (
 	"os/signal"
 
 	homedir "github.com/mitchellh/go-homedir"
-	"github.com/segmentio/ksuid"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
 	"github.com/randyridgley/simple-go-iot-device/config"
 	"github.com/randyridgley/simple-go-iot-device/device"
+	"github.com/randyridgley/simple-go-iot-device/device/connect"
+	"github.com/randyridgley/simple-go-iot-device/device/provision"
+	"github.com/randyridgley/simple-go-iot-device/device/shadow"
 )
 
 var configuration config.Configurations
+
+type sampleStruct struct {
+	Values []int
+}
+
+type sampleState struct {
+	Value  int
+	Struct sampleStruct
+}
 
 // bootstrapCmd represents the bootstrap command
 var bootstrapCmd = &cobra.Command{
@@ -44,21 +55,17 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		viper.BindPFlag("author", rootCmd.PersistentFlags().Lookup("author"))
-		fmt.Println("bootstrap called " + rootCmd.PersistentFlags().Lookup("author").Value.String())
-
 		err := viper.Unmarshal(&configuration)
 		if err != nil {
 			fmt.Printf("Unable to decode into struct, %v", err)
 		}
+		quit := make(chan struct{})
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, os.Interrupt)
+		thingName := generateThingName(configuration.SerialNumber)
 
 		thingConfig := device.ThingConfiguration{
-			ThingName: generateThingName(),
-			KeyPair: device.KeyPair{
-				PrivateKeyPath:    configuration.Bootstrap.PrivateKeyPath,
-				CertificatePath:   configuration.Bootstrap.CertificatePath,
-				CACertificatePath: configuration.Bootstrap.CACertificatePath,
-			},
+			ThingName:            thingName,
 			DeviceLocation:       configuration.DeviceLocation,
 			SerialNumber:         configuration.SerialNumber,
 			ProvisioningTemplate: configuration.Bootstrap.ProvisioningTemplate,
@@ -66,17 +73,92 @@ to quickly create a Cobra application.`,
 			Port:                 configuration.Server.Port,
 		}
 
-		thing, err := device.NewThing(thingConfig)
+		thing, err := device.New(thingConfig)
 		check(err)
+		fmt.Printf("Created thing")
 
-		thing.Connect()
+		if !thing.IsProvisioned() {
+			fmt.Println("Provisioning Thing")
+			keyPair := connect.KeyPair{
+				PrivateKeyPath:    configuration.Bootstrap.PrivateKeyPath,
+				CertificatePath:   configuration.Bootstrap.CertificatePath,
+				CACertificatePath: configuration.Bootstrap.CACertificatePath,
+			}
 
-		quit := make(chan struct{})
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, os.Interrupt)
+			p, err := provision.New(*thing, keyPair) // all this looks messy fix
+			if err != nil {
+				panic(err)
+			}
+			result, err := p.Provision()
+			if !result {
+				panic(err)
+			}
+		}
+
+		keyPair := connect.KeyPair{
+			PrivateKeyPath:    configuration.Primary.PrivateKeyPath,
+			CertificatePath:   configuration.Primary.CertificatePath,
+			CACertificatePath: configuration.Bootstrap.CACertificatePath, //Bootstrap and Primary are same CA
+		}
+
+		fmt.Printf("%s\n", keyPair.CertificatePath)
+		fmt.Printf("%s\n", keyPair.PrivateKeyPath)
+		thing.Connect(keyPair)
+
+		// result := <-thing.Channels.ConnectedChan
+
+		// if result {
+		// register device shadow
+		// startup and services and topic subscriptions
+		payload := "{\"let-me\": \"in\"}"
+		thing.Connection.Publish("fleet/2974685", payload)
+		fmt.Println("Published message")
+
+		s, err := shadow.New(*thing)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("Shadow created")
+
+		s.OnError(func(err error) {
+			fmt.Printf("async error: %v\n", err)
+		})
+		s.OnDelta(func(delta map[string]interface{}) {
+			fmt.Printf("delta: %+v\n", delta)
+		})
+
+		fmt.Println("Registered Error and Delta Handlers")
+
+		fmt.Print("> update desire\n")
+		doc, err := s.Desire(sampleState{Value: 1, Struct: sampleStruct{Values: []int{1, 2}}})
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("document: %+v\n", doc)
+
+		fmt.Print("> update report\n")
+		doc, err = s.Report(sampleState{Value: 2, Struct: sampleStruct{Values: []int{1, 2}}})
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("document: %+v\n", doc)
+
+		fmt.Print("> get document\n")
+		doc, err = s.Get()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("document: %+v\n", doc)
+		// } else {
+		// 	fmt.Println("Did not connect successfully")
+		// 	quit <- struct{}{}
+		// }
+
 		go func() {
 			<-c
-			thing.Client.Disconnect(250)
+			// add full cleanup here
+			// thing.Cleanup()
+			thing.Connection.Disconnect(250)
 			fmt.Println("[MQTT] Disconnected")
 			quit <- struct{}{}
 		}()
@@ -98,7 +180,7 @@ func init() {
 	// bootstrapCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
 
-func generateThingName() string {
+func generateThingName(serialNumber string) string {
 	home, err := homedir.Dir()
 	check(err)
 
@@ -113,7 +195,7 @@ func generateThingName() string {
 		line, _, err := r.ReadLine()
 		return string(line)
 	} else {
-		d1 := []byte("iot_" + ksuid.New().String())
+		d1 := []byte("fleety_" + serialNumber)
 		err := os.MkdirAll(home, 0700)
 		check(err)
 		err = ioutil.WriteFile(path, d1, 0644)
