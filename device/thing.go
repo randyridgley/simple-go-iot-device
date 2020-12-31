@@ -61,8 +61,16 @@ func (t *Thing) Connect(kp connect.KeyPair) error {
 }
 
 func (t *Thing) IsProvisioned() bool {
-	if _, err := os.Stat(fmt.Sprintf("certs/%s.certificate.pem", t.Config.ThingName)); err == nil {
-		return true
+	for _, file := range []string{
+		"certs/root.ca.bundle.pem",
+		fmt.Sprintf("certs/%s.certificate.pem", t.Config.ThingName),
+		fmt.Sprintf("certs/%s.private.key", t.Config.ThingName),
+	} {
+		_, err := os.Stat(file)
+		if os.IsNotExist(err) {
+			println(file, "not found")
+			return false
+		}
 	}
-	return false
+	return true
 }

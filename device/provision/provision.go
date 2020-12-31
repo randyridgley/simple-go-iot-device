@@ -16,6 +16,7 @@ limitations under the License.
 package provision
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -31,8 +32,8 @@ import (
 
 // Provision is an interface of Thing Provisioning.
 type Provision interface {
-	Provision() (bool, error)
-	PublishCreateKeysAndCertificate()
+	Provision(ctx context.Context, provisionChan chan bool)
+	Disconnect(ctx context.Context)
 }
 
 var ErrRejected = errors.New("rejected")
@@ -67,7 +68,7 @@ type provision struct {
 	// onDelta   func(delta map[string]interface{})
 	// onError   func(err error)
 	mu                         sync.Mutex
-	channels                   Channels
+	Channels                   Channels
 	KeysAndCertificateResponse struct {
 		CertificateId             string `json:"certificateId"`
 		CertificatePem            string `json:"certificatePem"`
@@ -78,17 +79,17 @@ type provision struct {
 		ThingName           string `json:"thingName"`
 		DeviceConfiguration string `json:"deviceConfiguration"`
 	}
-	connection connect.Connection
+	Connection connect.Connection
 	// msgToken  uint32
 }
 
 type Channels struct {
-	ConnectedChan     chan bool
 	RegisterKeysChan  chan bool
 	RegisterThingChan chan bool
+	ProvisionChan     chan bool
 }
 
-func New(thing device.Thing, bootstrapKeypair connect.KeyPair) (Provision, error) {
+func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPair) (Provision, error) {
 	conf := connect.ConnectionConfiguration{
 		KeyPair:  bootstrapKeypair,
 		Endpoint: thing.Config.Endpoint,
@@ -103,11 +104,10 @@ func New(thing device.Thing, bootstrapKeypair connect.KeyPair) (Provision, error
 	p := &provision{
 		thing:      thing,
 		thingName:  thing.Config.ThingName,
-		connection: c,
-		channels: Channels{
+		Connection: c,
+		Channels: Channels{
 			RegisterKeysChan:  make(chan bool, 10),
 			RegisterThingChan: make(chan bool, 10),
-			ConnectedChan:     make(chan bool, 10),
 		},
 	}
 	fmt.Printf("Bootstrap Connected to %s\n", thing.Config.Endpoint)
@@ -121,7 +121,7 @@ func New(thing device.Thing, bootstrapKeypair connect.KeyPair) (Provision, error
 		{fmt.Sprintf("$aws/provisioning-templates/%s/provision/json/accepted", p.thing.Config.ProvisioningTemplate), mqtt.MessageHandler(p.provisioningAccepted)},
 		{fmt.Sprintf("$aws/provisioning-templates/%s/provision/json/rejected", p.thing.Config.ProvisioningTemplate), mqtt.MessageHandler(p.provisioningRejected)},
 	} {
-		if err := p.connection.Subscribe(sub.topic, sub.handler); err != nil {
+		if err := p.Connection.Subscribe(sub.topic, sub.handler); err != nil {
 			return nil, fmt.Errorf("registering message handlers %v", err)
 		}
 	}
@@ -132,12 +132,12 @@ func New(thing device.Thing, bootstrapKeypair connect.KeyPair) (Provision, error
 func (p *provision) certificateCreateAccepted(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
 	json.Unmarshal(msg.Payload(), &p.KeysAndCertificateResponse)
-	p.channels.RegisterKeysChan <- true
+	p.Channels.RegisterKeysChan <- true
 }
 
 func (p *provision) certificateCreateRejected(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
-	p.channels.RegisterKeysChan <- false
+	p.Channels.RegisterKeysChan <- false
 }
 
 func (p *provision) provisioningAccepted(client mqtt.Client, msg mqtt.Message) {
@@ -180,56 +180,45 @@ func (p *provision) provisioningAccepted(client mqtt.Client, msg mqtt.Message) {
 		viper.WriteConfig()
 		fmt.Printf("wrote files: cert_file_name: %v key_file_name: %v\n", certFileName, keyFileName)
 	}
-	p.channels.ConnectedChan <- true
+	p.Channels.ProvisionChan <- true
 }
 
 func (p *provision) provisioningRejected(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
-	p.channels.ConnectedChan <- false
+	p.Channels.ProvisionChan <- false
 }
 
-func (p *provision) Provision() (bool, error) {
+func (p *provision) Provision(ctx context.Context, provisionChan chan bool) {
 	fmt.Println("Creating keys and certificates in AWS IoT")
-	if p == nil {
-		fmt.Println("provisioning null")
-	}
-	go p.PublishCreateKeysAndCertificate()
-
-	for {
-		select {
-		case result := <-p.channels.ConnectedChan:
-			if result {
-				p.connection.Disconnect(1)
-				return true, nil
-			} else {
-				return false, ErrRejected
-			}
-		}
-	}
+	p.Channels.ProvisionChan = provisionChan
+	p.Connection.Publish("$aws/certificates/create/json", []byte{})
+	go p.RegisterThing(ctx)
 }
 
-func (p *provision) PublishCreateKeysAndCertificate() {
-	p.connection.Publish("$aws/certificates/create/json", []byte{})
+func (p *provision) Disconnect(ctx context.Context) {
+	p.Connection.Disconnect(1)
 }
 
 func (p *provision) PublishThingRequest() {
 	payload, _ := json.Marshal(NewRegisterThingRequest(p))
 	s := string(payload)
 	fmt.Println(s)
-	token := p.connection.Publish(fmt.Sprintf("$aws/provisioning-templates/%s/provision/json", p.thing.Config.ProvisioningTemplate), payload)
+	token := p.Connection.Publish(fmt.Sprintf("$aws/provisioning-templates/%s/provision/json", p.thing.Config.ProvisioningTemplate), payload)
 	token.Wait() //fix
 }
 
-func (p *provision) RegisterThing() {
+func (p *provision) RegisterThing(ctx context.Context) error {
 	for {
 		select {
-		case accepted := <-p.channels.RegisterKeysChan:
+		case <-ctx.Done():
+			return fmt.Errorf("updating reported state %v", ctx.Err())
+		case accepted := <-p.Channels.RegisterKeysChan:
 			if accepted {
 				fmt.Println("Creating thing in AWS IoT")
-				go p.PublishThingRequest()
+				p.PublishThingRequest()
 			} else {
 				fmt.Println("Create Keys and Certificates rejected")
-				p.channels.ConnectedChan <- false
+				p.Channels.ProvisionChan <- false
 			}
 		}
 	}

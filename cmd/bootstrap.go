@@ -16,13 +16,11 @@ limitations under the License.
 package cmd
 
 import (
-	"bufio"
+	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 
-	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -55,6 +53,9 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
 		err := viper.Unmarshal(&configuration)
 		if err != nil {
 			fmt.Printf("Unable to decode into struct, %v", err)
@@ -62,10 +63,9 @@ to quickly create a Cobra application.`,
 		quit := make(chan struct{})
 		c := make(chan os.Signal, 1)
 		signal.Notify(c, os.Interrupt)
-		thingName := generateThingName(configuration.SerialNumber)
 
 		thingConfig := device.ThingConfiguration{
-			ThingName:            thingName,
+			ThingName:            configuration.ThingName,
 			DeviceLocation:       configuration.DeviceLocation,
 			SerialNumber:         configuration.SerialNumber,
 			ProvisioningTemplate: configuration.Bootstrap.ProvisioningTemplate,
@@ -77,21 +77,42 @@ to quickly create a Cobra application.`,
 		check(err)
 		fmt.Printf("Created thing")
 
+		go func() {
+			<-c
+			// add full cleanup here
+			// thing.Cleanup()
+			thing.Connection.Disconnect(250)
+			fmt.Println("[MQTT] Disconnected")
+			quit <- struct{}{}
+		}()
+
 		if !thing.IsProvisioned() {
-			fmt.Println("Provisioning Thing")
+			fmt.Println("Thing not provisioned, starting provisioning thing.")
 			keyPair := connect.KeyPair{
 				PrivateKeyPath:    configuration.Bootstrap.PrivateKeyPath,
 				CertificatePath:   configuration.Bootstrap.CertificatePath,
 				CACertificatePath: configuration.Bootstrap.CACertificatePath,
 			}
 
-			p, err := provision.New(*thing, keyPair) // all this looks messy fix
+			p, err := provision.New(ctx, *thing, keyPair) // all this looks messy fix
 			if err != nil {
 				panic(err)
 			}
-			result, err := p.Provision()
-			if !result {
-				panic(err)
+
+			provChan := make(chan bool)
+			go p.Provision(ctx, provChan)
+		provisionWait: // feels like a hack
+			for {
+				select {
+				case result := <-provChan:
+					if result {
+						p.Disconnect(ctx)
+						fmt.Println("Thing provisioning completed.")
+						break provisionWait
+					} else {
+						os.Exit(1)
+					}
+				}
 			}
 		}
 
@@ -105,16 +126,13 @@ to quickly create a Cobra application.`,
 		fmt.Printf("%s\n", keyPair.PrivateKeyPath)
 		thing.Connect(keyPair)
 
-		// result := <-thing.Channels.ConnectedChan
-
-		// if result {
 		// register device shadow
 		// startup and services and topic subscriptions
 		payload := "{\"let-me\": \"in\"}"
 		thing.Connection.Publish("fleet/2974685", payload)
 		fmt.Println("Published message")
 
-		s, err := shadow.New(*thing)
+		s, err := shadow.New(ctx, *thing)
 		if err != nil {
 			panic(err)
 		}
@@ -130,21 +148,22 @@ to quickly create a Cobra application.`,
 		fmt.Println("Registered Error and Delta Handlers")
 
 		fmt.Print("> update desire\n")
-		doc, err := s.Desire(sampleState{Value: 1, Struct: sampleStruct{Values: []int{1, 2}}})
+		doc, err := s.Desire(ctx, sampleState{Value: 1, Struct: sampleStruct{Values: []int{1, 2}}})
+		fmt.Println(err)
 		if err != nil {
 			panic(err)
 		}
 		fmt.Printf("document: %+v\n", doc)
 
 		fmt.Print("> update report\n")
-		doc, err = s.Report(sampleState{Value: 2, Struct: sampleStruct{Values: []int{1, 2}}})
+		doc, err = s.Report(ctx, sampleState{Value: 2, Struct: sampleStruct{Values: []int{1, 2}}})
 		if err != nil {
 			panic(err)
 		}
 		fmt.Printf("document: %+v\n", doc)
 
 		fmt.Print("> get document\n")
-		doc, err = s.Get()
+		doc, err = s.Get(ctx)
 		if err != nil {
 			panic(err)
 		}
@@ -153,15 +172,6 @@ to quickly create a Cobra application.`,
 		// 	fmt.Println("Did not connect successfully")
 		// 	quit <- struct{}{}
 		// }
-
-		go func() {
-			<-c
-			// add full cleanup here
-			// thing.Cleanup()
-			thing.Connection.Disconnect(250)
-			fmt.Println("[MQTT] Disconnected")
-			quit <- struct{}{}
-		}()
 		<-quit
 	},
 }
@@ -178,30 +188,6 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	// bootstrapCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
-}
-
-func generateThingName(serialNumber string) string {
-	home, err := homedir.Dir()
-	check(err)
-
-	path := fmt.Sprintf("%s/%s", home, "THINGNAME")
-	if _, err := os.Stat(path); err == nil {
-		f, err := os.Open(path)
-		if err != nil {
-			fmt.Println(err)
-		}
-		defer f.Close()
-		r := bufio.NewReaderSize(f, 4*1024)
-		line, _, err := r.ReadLine()
-		return string(line)
-	} else {
-		d1 := []byte("fleety_" + serialNumber)
-		err := os.MkdirAll(home, 0700)
-		check(err)
-		err = ioutil.WriteFile(path, d1, 0644)
-		check(err)
-		return string(d1)
-	}
 }
 
 func check(e error) {

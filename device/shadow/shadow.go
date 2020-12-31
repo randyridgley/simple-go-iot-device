@@ -16,6 +16,7 @@ limitations under the License.
 package shadow
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -29,15 +30,15 @@ import (
 // Shadow is an interface of Thing Shadow.
 type Shadow interface {
 	// Get thing state and update local state document.
-	Get() (*ThingDocument, error)
+	Get(ctx context.Context) (*ThingDocument, error)
 	// Report thing state and update local state document.
-	Report(state interface{}) (*ThingDocument, error)
+	Report(ctx context.Context, state interface{}) (*ThingDocument, error)
 	// Desire sets desired thing state and update local state document.
-	Desire(state interface{}) (*ThingDocument, error)
+	Desire(ctx context.Context, state interface{}) (*ThingDocument, error)
 	// Document returns full thing document.
 	Document() *ThingDocument
 	// Delete thing shadow.
-	Delete() error
+	Delete(ctx context.Context) error
 	// OnDelta sets handler of state deltas.
 	OnDelta(func(delta map[string]interface{}))
 	// OnError sets handler of asynchronous errors.
@@ -69,7 +70,7 @@ func (s *shadow) topic(operation string) string {
 	return "$aws/things/" + s.thingName + "/shadow/" + operation
 }
 
-func New(thing device.Thing) (Shadow, error) {
+func New(ctx context.Context, thing device.Thing) (Shadow, error) {
 	s := &shadow{
 		thing:     thing,
 		thingName: thing.Config.ThingName,
@@ -96,7 +97,6 @@ func New(thing device.Thing) (Shadow, error) {
 		{s.topic("get/accepted"), mqtt.MessageHandler(s.getAccepted)},
 		{s.topic("get/rejected"), mqtt.MessageHandler(s.rejected)},
 	} {
-		fmt.Printf("Subscribing to %v\n", sub.topic)
 		if err := thing.Connection.Subscribe(sub.topic, sub.handler); err != nil {
 			return nil, fmt.Errorf("registering message handlers %v", err)
 		}
@@ -189,7 +189,7 @@ func (s *shadow) deleteAccepted(client mqtt.Client, msg mqtt.Message) {
 	s.handleResponse(doc)
 }
 
-func (s *shadow) Report(state interface{}) (*ThingDocument, error) {
+func (s *shadow) Report(ctx context.Context, state interface{}) (*ThingDocument, error) {
 	rawState, err := json.Marshal(state)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling state %v", err)
@@ -214,11 +214,13 @@ func (s *shadow) Report(state interface{}) (*ThingDocument, error) {
 		s.mu.Unlock()
 	}()
 
-	if err := s.thing.Connection.Publish(s.topic("update"), data); err != nil {
+	if token := s.thing.Connection.Publish(s.topic("update"), data); token.Wait() && token.Error() != nil {
 		return nil, fmt.Errorf("sending request %v", err)
 	}
 
 	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("updating reported state %v", ctx.Err())
 	case res := <-ch:
 		switch r := res.(type) {
 		case *thingDocumentRaw:
@@ -234,7 +236,7 @@ func (s *shadow) Report(state interface{}) (*ThingDocument, error) {
 	}
 }
 
-func (s *shadow) Desire(state interface{}) (*ThingDocument, error) {
+func (s *shadow) Desire(ctx context.Context, state interface{}) (*ThingDocument, error) {
 	rawState, err := json.Marshal(state)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling state %v", err)
@@ -259,11 +261,13 @@ func (s *shadow) Desire(state interface{}) (*ThingDocument, error) {
 		s.mu.Unlock()
 	}()
 
-	if err := s.thing.Connection.Publish(s.topic("update"), data); err != nil {
+	if token := s.thing.Connection.Publish(s.topic("update"), data); token.Wait() && token.Error() != nil {
 		return nil, fmt.Errorf("sending request %v", err)
 	}
 
 	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("updating reported state %v", ctx.Err())
 	case res := <-ch:
 		switch r := res.(type) {
 		case *thingDocumentRaw:
@@ -279,7 +283,7 @@ func (s *shadow) Desire(state interface{}) (*ThingDocument, error) {
 	}
 }
 
-func (s *shadow) Get() (*ThingDocument, error) {
+func (s *shadow) Get(ctx context.Context) (*ThingDocument, error) {
 	token := s.token()
 	data, err := json.Marshal(&simpleRequest{
 		ClientToken: token,
@@ -298,11 +302,13 @@ func (s *shadow) Get() (*ThingDocument, error) {
 		s.mu.Unlock()
 	}()
 
-	if err := s.thing.Connection.Publish(s.topic("get"), []byte(data)); err != nil {
+	if token := s.thing.Connection.Publish(s.topic("get"), []byte(data)); token.Wait() && token.Error() != nil {
 		return nil, fmt.Errorf("sending request %v", err)
 	}
 
 	select {
+	case <-ctx.Done():
+		return nil, fmt.Errorf("updating reported state %v", ctx.Err())
 	case res := <-ch:
 		switch r := res.(type) {
 		case *ThingDocument:
@@ -316,7 +322,7 @@ func (s *shadow) Get() (*ThingDocument, error) {
 	}
 }
 
-func (s *shadow) Delete() error {
+func (s *shadow) Delete(ctx context.Context) error {
 	token := s.token()
 	data, err := json.Marshal(&simpleRequest{
 		ClientToken: token,
@@ -335,11 +341,13 @@ func (s *shadow) Delete() error {
 		s.mu.Unlock()
 	}()
 
-	if err := s.thing.Connection.Publish(s.topic("delete"), []byte(data)); err != nil {
+	if token := s.thing.Connection.Publish(s.topic("delete"), []byte(data)); token.Wait() && token.Error() != nil {
 		return fmt.Errorf("sending request %v", err)
 	}
 
 	select {
+	case <-ctx.Done():
+		return fmt.Errorf("updating reported state %v", ctx.Err())
 	case res := <-ch:
 		switch r := res.(type) {
 		case *thingDocumentRaw:

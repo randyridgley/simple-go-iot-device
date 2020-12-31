@@ -21,6 +21,7 @@ type Configurations struct {
 	Primary        PrimaryConfigurations
 	SerialNumber   string
 	DeviceLocation string
+	ThingName      string
 }
 
 // ServerConfigurations exported
