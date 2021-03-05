@@ -23,6 +23,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/randyridgley/simple-go-iot-device/device"
@@ -30,13 +31,15 @@ import (
 	"github.com/spf13/viper"
 )
 
+const certAccepted = "$aws/certificates/create/json/accepted"
+const certRejected = "$aws/certificates/create/json/rejected"
+const certCreate = "$aws/certificates/create/json"
+
 // Provision is an interface of Thing Provisioning.
 type Provision interface {
-	Provision(ctx context.Context, provisionChan chan bool)
+	Provision(ctx context.Context)
 	Disconnect(ctx context.Context)
 }
-
-var ErrRejected = errors.New("rejected")
 
 // ErrInvalidResponse is returned if failed to parse response from AWS IoT.
 var ErrInvalidResponse = errors.New("invalid response from AWS IoT")
@@ -51,7 +54,7 @@ type Parameters struct {
 	DeviceLocation string `json:"deviceLocation"`
 }
 
-func NewRegisterThingRequest(p *provision) *RegisterThingRequest {
+func NewRegisterThingRequest(p *Provisioner) *RegisterThingRequest {
 	return &RegisterThingRequest{
 		CertificateOwnershipToken: p.KeysAndCertificateResponse.CertificateOwnershipToken,
 		Parameters: Parameters{
@@ -61,7 +64,12 @@ func NewRegisterThingRequest(p *provision) *RegisterThingRequest {
 	}
 }
 
-type provision struct {
+func (p *Provisioner) token() string {
+	token := atomic.AddUint32(&p.msgToken, 1)
+	return fmt.Sprintf("%x", token)
+}
+
+type Provisioner struct {
 	thing     device.Thing
 	thingName string
 	// doc       *ThingDocument
@@ -80,7 +88,8 @@ type provision struct {
 		DeviceConfiguration string `json:"deviceConfiguration"`
 	}
 	Connection connect.Connection
-	// msgToken  uint32
+	chResps    map[string]chan interface{}
+	msgToken   uint32
 }
 
 type Channels struct {
@@ -89,7 +98,8 @@ type Channels struct {
 	ProvisionChan     chan bool
 }
 
-func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPair) (Provision, error) {
+// New - Function to create a new Provisioner
+func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPair) (*Provisioner, error) {
 	conf := connect.ConnectionConfiguration{
 		KeyPair:  bootstrapKeypair,
 		Endpoint: thing.Config.Endpoint,
@@ -100,8 +110,9 @@ func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPai
 	if err != nil {
 		return nil, fmt.Errorf("Could not create connection %v", err)
 	}
+
 	c.Connect()
-	p := &provision{
+	p := &Provisioner{
 		thing:      thing,
 		thingName:  thing.Config.ThingName,
 		Connection: c,
@@ -116,8 +127,8 @@ func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPai
 		topic   string
 		handler mqtt.MessageHandler
 	}{
-		{"$aws/certificates/create/json/accepted", mqtt.MessageHandler(p.certificateCreateAccepted)},
-		{"$aws/certificates/create/json/rejected", mqtt.MessageHandler(p.certificateCreateRejected)},
+		{certAccepted, mqtt.MessageHandler(p.certificateCreateAccepted)},
+		{certRejected, mqtt.MessageHandler(p.certificateCreateRejected)},
 		{fmt.Sprintf("$aws/provisioning-templates/%s/provision/json/accepted", p.thing.Config.ProvisioningTemplate), mqtt.MessageHandler(p.provisioningAccepted)},
 		{fmt.Sprintf("$aws/provisioning-templates/%s/provision/json/rejected", p.thing.Config.ProvisioningTemplate), mqtt.MessageHandler(p.provisioningRejected)},
 	} {
@@ -129,18 +140,17 @@ func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPai
 	return p, nil
 }
 
-func (p *provision) certificateCreateAccepted(client mqtt.Client, msg mqtt.Message) {
+func (p *Provisioner) certificateCreateAccepted(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
 	json.Unmarshal(msg.Payload(), &p.KeysAndCertificateResponse)
-	p.Channels.RegisterKeysChan <- true
+	go p.PublishThingRequest()
 }
 
-func (p *provision) certificateCreateRejected(client mqtt.Client, msg mqtt.Message) {
+func (p *Provisioner) certificateCreateRejected(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
-	p.Channels.RegisterKeysChan <- false
 }
 
-func (p *provision) provisioningAccepted(client mqtt.Client, msg mqtt.Message) {
+func (p *Provisioner) provisioningAccepted(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
 	json.Unmarshal(msg.Payload(), &p.RegisterThingResponse)
 	certFileName := fmt.Sprintf("certs/%s.certificate.pem", p.thing.Config.ThingName)
@@ -180,46 +190,48 @@ func (p *provision) provisioningAccepted(client mqtt.Client, msg mqtt.Message) {
 		viper.WriteConfig()
 		fmt.Printf("wrote files: cert_file_name: %v key_file_name: %v\n", certFileName, keyFileName)
 	}
-	p.Channels.ProvisionChan <- true
+	fmt.Printf("Writing to provision complete channel")
+	p.Channels.ProvisionChan<-true
 }
 
-func (p *provision) provisioningRejected(client mqtt.Client, msg mqtt.Message) {
+func (p *Provisioner) provisioningRejected(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
-	p.Channels.ProvisionChan <- false
+	p.Channels.ProvisionChan<-false
 }
 
-func (p *provision) Provision(ctx context.Context, provisionChan chan bool) {
+func (p *Provisioner) Provision(ctx context.Context) {
 	fmt.Println("Creating keys and certificates in AWS IoT")
-	p.Channels.ProvisionChan = provisionChan
-	p.Connection.Publish("$aws/certificates/create/json", []byte{})
-	go p.RegisterThing(ctx)
+	if token := p.Connection.Publish(certCreate, []byte{}); token.Error() != nil {
+		fmt.Errorf("registering message handlers %v", token.Error())
+	}
 }
 
-func (p *provision) Disconnect(ctx context.Context) {
+func (p *Provisioner) Disconnect(ctx context.Context) {
 	p.Connection.Disconnect(1)
 }
 
-func (p *provision) PublishThingRequest() {
+func (p *Provisioner) PublishThingRequest() {
 	payload, _ := json.Marshal(NewRegisterThingRequest(p))
-	s := string(payload)
-	fmt.Println(s)
-	token := p.Connection.Publish(fmt.Sprintf("$aws/provisioning-templates/%s/provision/json", p.thing.Config.ProvisioningTemplate), payload)
-	token.Wait() //fix
-}
-
-func (p *provision) RegisterThing(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("updating reported state %v", ctx.Err())
-		case accepted := <-p.Channels.RegisterKeysChan:
-			if accepted {
-				fmt.Println("Creating thing in AWS IoT")
-				p.PublishThingRequest()
-			} else {
-				fmt.Println("Create Keys and Certificates rejected")
-				p.Channels.ProvisionChan <- false
-			}
-		}
+	topic := fmt.Sprintf("$aws/provisioning-templates/%s/provision/json", p.thing.Config.ProvisioningTemplate)
+	fmt.Printf("* [%s] %s\n", topic, string(payload))
+	if token := p.Connection.Publish(topic, payload); token.Error() != nil {
+		fmt.Errorf("publish thing request %v", token.Error())
 	}
 }
+
+// func (p *Provisioner) RegisterThing(ctx context.Context) error {
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			return fmt.Errorf("updating reported state %v", ctx.Err())
+// 		case accepted := <-p.Channels.RegisterKeysChan:
+// 			if accepted {
+// 				fmt.Println("Creating thing in AWS IoT")
+
+// 			} else {
+// 				fmt.Println("Create Keys and Certificates rejected")
+// 				p.Channels.ProvisionChan <- false
+// 			}
+// 		}
+// 	}
+// }

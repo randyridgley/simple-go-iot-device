@@ -43,7 +43,7 @@
 			"OverrideSettings": {
 				"AttributePayload": "MERGE",
 				"ThingTypeName": "REPLACE",
-				"ThingGroups": "DO_NOTHING"
+				"ThingGroups": "REPLACE"
 			}
 		},
 		"certificate": {

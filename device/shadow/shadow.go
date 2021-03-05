@@ -96,6 +96,13 @@ func New(ctx context.Context, thing device.Thing) (Shadow, error) {
 		{s.topic("delete/rejected"), mqtt.MessageHandler(s.rejected)},
 		{s.topic("get/accepted"), mqtt.MessageHandler(s.getAccepted)},
 		{s.topic("get/rejected"), mqtt.MessageHandler(s.rejected)},
+		{s.topic("name/health/update/delta"), mqtt.MessageHandler(s.updateDelta)},
+		{s.topic("name/health/update/accepted"), mqtt.MessageHandler(s.updateAccepted)},
+		{s.topic("name/health/update/rejected"), mqtt.MessageHandler(s.rejected)},
+		{s.topic("name/health/delete/accepted"), mqtt.MessageHandler(s.deleteAccepted)},
+		{s.topic("name/health/delete/rejected"), mqtt.MessageHandler(s.rejected)},
+		{s.topic("name/health/get/accepted"), mqtt.MessageHandler(s.getAccepted)},
+		{s.topic("name/health/get/rejected"), mqtt.MessageHandler(s.rejected)},
 	} {
 		if err := thing.Connection.Subscribe(sub.topic, sub.handler); err != nil {
 			return nil, fmt.Errorf("registering message handlers %v", err)

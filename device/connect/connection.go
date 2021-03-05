@@ -104,7 +104,7 @@ func (c *connection) Publish(topic string, payload interface{}) mqtt.Token {
 
 func (c *connection) Subscribe(topic string, handler mqtt.MessageHandler) error {
 	fmt.Printf("Subscribing to %v\n", topic)
-	if token := c.Client.Subscribe(topic, 1, handler); token.Wait() && token.Error() != nil {
+	if token := c.Client.Subscribe(topic, 1, handler); token.Error() != nil {
 		return fmt.Errorf("registering message handlers %v", token.Error())
 	}
 	return nil

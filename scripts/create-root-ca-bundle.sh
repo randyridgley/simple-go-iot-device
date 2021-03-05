@@ -21,7 +21,7 @@
 # AWS IoT server certificates
 # See also: https://docs.aws.amazon.com/iot/latest/developerguide/managing-device-certs.html
 
-ROOT_CA_FILE=../certs/root.ca.bundle-test.pem
+ROOT_CA_FILE=../certs/root.ca.bundle.pem
 cp /dev/null $ROOT_CA_FILE
 
 for ca in \

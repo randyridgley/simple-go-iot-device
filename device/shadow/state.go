@@ -69,10 +69,10 @@ func (s *ThingDocument) update(state *thingDocumentRaw) error {
 	s.Version = state.Version
 	s.Timestamp = state.Timestamp
 	if err := updateStateRaw(s.State.Desired, state.State.Desired); err != nil {
-		return fmt.Errorf("updating desired state", err)
+		return fmt.Errorf("updating desired state %v", err)
 	}
 	if err := updateStateRaw(s.State.Reported, state.State.Reported); err != nil {
-		return fmt.Errorf("updating reported state", err)
+		return fmt.Errorf("updating reported state %v", err)
 	}
 	return nil
 }
@@ -100,7 +100,7 @@ func updateStateRaw(state map[string]interface{}, update json.RawMessage) error 
 	}
 	var u map[string]interface{}
 	if err := json.Unmarshal([]byte(update), &u); err != nil {
-		return fmt.Errorf("unmarshaling update", err)
+		return fmt.Errorf("unmarshaling update %v", err)
 	}
 	return updateState(state, u)
 }
@@ -117,7 +117,7 @@ func updateState(state map[string]interface{}, update map[string]interface{}) er
 		case map[string]interface{}:
 			if s, ok := state[key].(map[string]interface{}); ok {
 				if err := updateState(s, v); err != nil {
-					return fmt.Errorf("updating state", err)
+					return fmt.Errorf("updating state %v", err)
 				}
 			} else {
 				state[key] = v

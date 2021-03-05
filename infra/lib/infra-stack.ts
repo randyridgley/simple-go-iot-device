@@ -4,6 +4,8 @@ import * as cdk from '@aws-cdk/core';
 import * as iot from '@aws-cdk/aws-iot'
 import * as lambda from '@aws-cdk/aws-lambda'
 import * as iam from '@aws-cdk/aws-iam'
+import * as logs from '@aws-cdk/aws-logs';
+import * as cr from '@aws-cdk/custom-resources';
 
 export class InfraStack extends cdk.Stack {
   constructor(scope: cdk.Construct, id: string, props?: cdk.StackProps) {
@@ -14,10 +16,8 @@ export class InfraStack extends cdk.Stack {
       description: "IoT Certificate ARN taken from the create-keys-and-certs.sh script"
     });
 
-    const ns = scope.node.tryGetContext('ns') || '';
-
     const fn = new lambda.Function(this, 'PreProvisionHookFunction', {
-      functionName: `${ns}-pre-provision-hook`,
+      functionName: `iot-pre-provision-hook`,
       code: lambda.Code.fromAsset(path.resolve(__dirname, 'lambda', 'pre-provision-hook')),
       runtime: lambda.Runtime.PYTHON_3_8,
       handler: 'lambda.lambda_handler',
@@ -92,16 +92,16 @@ export class InfraStack extends cdk.Stack {
               "Effect": "Allow",
               "Action": ["iot:Publish","iot:Receive"],
               "Resource": [
-                  "arn:aws:iot:us-east-1:649037252677:topic/$aws/certificates/create/*",
-                  `arn:aws:iot:us-east-1:649037252677:topic/$aws/provisioning-templates/${templateName}/provision/*`
+                  `arn:aws:iot:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:topic/$aws/certificates/create/*`,
+                  `arn:aws:iot:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:topic/$aws/provisioning-templates/${templateName}/provision/*`
               ]
           },
           {
               "Effect": "Allow",
               "Action": "iot:Subscribe",
               "Resource": [
-                  "arn:aws:iot:us-east-1:649037252677:topicfilter/$aws/certificates/create/*",
-                  `arn:aws:iot:us-east-1:649037252677:topicfilter/$aws/provisioning-templates/${templateName}/provision/*`
+                  `arn:aws:iot:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:topicfilter/$aws/certificates/create/*`,
+                  `arn:aws:iot:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:topicfilter/$aws/provisioning-templates/${templateName}/provision/*`
               ]
           }
         ],
@@ -115,5 +115,50 @@ export class InfraStack extends cdk.Stack {
       }
     )
     iotPolicyPrincipalAttachment.addDependsOn(iotFleetPolicy)
+
+    const logsPolicy = new iam.PolicyStatement({
+      resources: [`arn:${cdk.Aws.PARTITION}:logs:${cdk.Aws.REGION}:${cdk.Aws.ACCOUNT_ID}:log-group:/aws/lambda/*`],
+      actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents']
+    });
+
+    const iotPolicy = new iam.PolicyStatement({
+      resources: ['*'],
+      actions: ['iot:CreateThingGroup', 'iot:DeleteThingGroup']
+    });
+
+    const inlinePolicies = {
+        CloudWatchLogsPolicy: new iam.PolicyDocument({
+          statements: [logsPolicy]
+        }),
+        IotThingPolicy: new iam.PolicyDocument({
+          statements: [iotPolicy]
+        })
+    };
+
+    const customResourceRole = new iam.Role(this, 'Role', {
+        assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+        inlinePolicies
+    });
+
+    const onEvent = new lambda.Function(this, 'ThingGroupCreationHandler', {
+      runtime: lambda.Runtime.PYTHON_3_8,
+      code: lambda.Code.fromAsset(path.join(__dirname, 'lambda/iot-cr-handler')),
+      handler: 'index.on_event',
+      role: customResourceRole,
+    });
+
+    const iotProvider = new cr.Provider(this, 'CRProvider', {
+      onEventHandler: onEvent,
+      logRetention: logs.RetentionDays.ONE_DAY,
+    });
+
+    const outputs = new cdk.CustomResource(this, 'StackOutputs', {
+      serviceToken: iotProvider.serviceToken,
+      properties: {
+        stackName: cdk.Stack.name,
+        regionName: cdk.Aws.REGION,
+        thingGroupName: 'fleet-provisioning-group'
+      },
+    });
   }
 }

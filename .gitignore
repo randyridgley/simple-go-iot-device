@@ -16,3 +16,4 @@ vendor/
 certs/
 .simple-go-iot-device.yaml
 iot_device
+node_modules/

@@ -1,12 +1,15 @@
+serialNumber: "2974685"
+deviceLocation: "USA"
+license: Apache 2.0
+thingname: fleety_2974685
 server:
   port: 8883
   endpoint: <AWS IoT Endpoint>
-
 bootstrap:
-  privatekeypath:    "certs/provision-claim.private.key"
-  certificatepath:   "certs/provision-claim.certificate.pem"
+  privatekeypath:    "certs/fleet-provisioning.private.key"
+  certificatepath:   "certs/fleet-provisioning.certificate.pem"
   cacertificatepath: "certs/root.ca.bundle.pem"
-  provisioningTemplate: "FleetProvisioningTemplate"
-
-serialNumber: "1234567890"
-deviceLocation: "USA"
+  provisioningTemplate: "GoFleetProvisioningTemplate"
+primary:
+  certificatepath: certs/fleety_2974685.certificate.pem
+  privatekeypath: certs/fleety_2974685.private.key

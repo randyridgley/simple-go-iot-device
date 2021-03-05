@@ -17,6 +17,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -75,7 +76,6 @@ to quickly create a Cobra application.`,
 
 		thing, err := device.New(thingConfig)
 		check(err)
-		fmt.Printf("Created thing")
 
 		go func() {
 			<-c
@@ -87,7 +87,8 @@ to quickly create a Cobra application.`,
 		}()
 
 		if !thing.IsProvisioned() {
-			fmt.Println("Thing not provisioned, starting provisioning thing.")
+			fmt.Println("Thing not provisioned, starting provisioning of thing.")
+			// create the bootstrapping keypair configuration
 			keyPair := connect.KeyPair{
 				PrivateKeyPath:    configuration.Bootstrap.PrivateKeyPath,
 				CertificatePath:   configuration.Bootstrap.CertificatePath,
@@ -99,21 +100,11 @@ to quickly create a Cobra application.`,
 				panic(err)
 			}
 
-			provChan := make(chan bool)
-			go p.Provision(ctx, provChan)
-		provisionWait: // feels like a hack
-			for {
-				select {
-				case result := <-provChan:
-					if result {
-						p.Disconnect(ctx)
-						fmt.Println("Thing provisioning completed.")
-						break provisionWait
-					} else {
-						os.Exit(1)
-					}
-				}
-			}
+			go p.Provision(ctx)
+			fmt.Println("Waiting for provisioning.")
+			<-p.Channels.ProvisionChan
+			p.Disconnect(ctx)
+			fmt.Println("Thing provisioning completed.")
 		}
 
 		keyPair := connect.KeyPair{
@@ -167,7 +158,10 @@ to quickly create a Cobra application.`,
 		if err != nil {
 			panic(err)
 		}
-		fmt.Printf("document: %+v\n", doc)
+
+		b, err := json.Marshal(doc)
+		fmt.Printf("%s", b)
+		// fmt.Printf("document: %+v\n", doc)
 		// } else {
 		// 	fmt.Println("Did not connect successfully")
 		// 	quit <- struct{}{}

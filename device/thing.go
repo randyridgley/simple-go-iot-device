@@ -68,7 +68,6 @@ func (t *Thing) IsProvisioned() bool {
 	} {
 		_, err := os.Stat(file)
 		if os.IsNotExist(err) {
-			println(file, "not found")
 			return false
 		}
 	}

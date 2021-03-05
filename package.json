@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@aws-cdk/custom-resources": "^1.91.0"
+  }
+}
