@@ -117,8 +117,8 @@ func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPai
 		thingName:  thing.Config.ThingName,
 		Connection: c,
 		Channels: Channels{
-			RegisterKeysChan:  make(chan bool, 10),
-			RegisterThingChan: make(chan bool, 10),
+			RegisterKeysChan:  make(chan bool, 1),
+			RegisterThingChan: make(chan bool, 1),
 		},
 	}
 	fmt.Printf("Bootstrap Connected to %s\n", thing.Config.Endpoint)
@@ -143,11 +143,12 @@ func New(tx context.Context, thing device.Thing, bootstrapKeypair connect.KeyPai
 func (p *Provisioner) certificateCreateAccepted(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
 	json.Unmarshal(msg.Payload(), &p.KeysAndCertificateResponse)
-	go p.PublishThingRequest()
+	p.Channels.RegisterKeysChan <- true
 }
 
 func (p *Provisioner) certificateCreateRejected(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
+	p.Channels.RegisterKeysChan <- false
 }
 
 func (p *Provisioner) provisioningAccepted(client mqtt.Client, msg mqtt.Message) {
@@ -191,23 +192,42 @@ func (p *Provisioner) provisioningAccepted(client mqtt.Client, msg mqtt.Message)
 		fmt.Printf("wrote files: cert_file_name: %v key_file_name: %v\n", certFileName, keyFileName)
 	}
 	fmt.Printf("Writing to provision complete channel")
-	p.Channels.ProvisionChan<-true
+	p.Channels.RegisterThingChan <- true
 }
 
 func (p *Provisioner) provisioningRejected(client mqtt.Client, msg mqtt.Message) {
 	fmt.Printf("* [%s] %s\n", msg.Topic(), string(msg.Payload()))
-	p.Channels.ProvisionChan<-false
+	p.Channels.RegisterThingChan <- false
 }
 
 func (p *Provisioner) Provision(ctx context.Context) {
-	fmt.Println("Creating keys and certificates in AWS IoT")
-	if token := p.Connection.Publish(certCreate, []byte{}); token.Error() != nil {
-		fmt.Errorf("registering message handlers %v", token.Error())
+	go func() {
+		fmt.Println("Creating keys and certificates in AWS IoT")
+		if token := p.Connection.Publish(certCreate, []byte{}); token.Error() != nil {
+			fmt.Errorf("registering message handlers %v", token.Error())
+		}
+	}()
+	fmt.Println("Waiting for certificate provisioning.")
+	go p.RegisterThing(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Errorf("updating reported state %v", ctx.Err())
+		case accepted := <-p.Channels.RegisterThingChan:
+			if accepted {
+				fmt.Println("Thing provisioning completed.")
+				p.Disconnect(ctx)
+			} else {
+				fmt.Println("Thing provisioning failed.")
+			}
+			return
+		}
 	}
 }
 
 func (p *Provisioner) Disconnect(ctx context.Context) {
-	p.Connection.Disconnect(1)
+	p.Connection.Disconnect(3)
 }
 
 func (p *Provisioner) PublishThingRequest() {
@@ -219,19 +239,24 @@ func (p *Provisioner) PublishThingRequest() {
 	}
 }
 
-// func (p *Provisioner) RegisterThing(ctx context.Context) error {
-// 	for {
-// 		select {
-// 		case <-ctx.Done():
-// 			return fmt.Errorf("updating reported state %v", ctx.Err())
-// 		case accepted := <-p.Channels.RegisterKeysChan:
-// 			if accepted {
-// 				fmt.Println("Creating thing in AWS IoT")
-
-// 			} else {
-// 				fmt.Println("Create Keys and Certificates rejected")
-// 				p.Channels.ProvisionChan <- false
-// 			}
-// 		}
-// 	}
-// }
+func (p *Provisioner) RegisterThing(ctx context.Context) {
+registerThing:
+	for {
+		select {
+		case <-ctx.Done():
+			fmt.Errorf("updating reported state %v", ctx.Err())
+			break registerThing
+		case accepted := <-p.Channels.RegisterKeysChan:
+			if accepted {
+				fmt.Println("Creating thing in AWS IoT")
+				p.PublishThingRequest()
+			} else {
+				fmt.Println("Create Keys and Certificates rejected")
+				p.Channels.ProvisionChan <- false
+			}
+			fmt.Println("Returned from register keys channel")
+			break registerThing
+		}
+	}
+	fmt.Println("returning from register thing")
+}

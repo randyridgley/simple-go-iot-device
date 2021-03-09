@@ -50,6 +50,7 @@ func (t *Thing) Connect(kp connect.KeyPair) error {
 		Port:     t.Config.Port,
 		ClientId: t.Config.ThingName,
 	}
+	// fmt.Print(conf)
 	c, err := connect.New(&conf)
 	c.Connect()
 	if err != nil {

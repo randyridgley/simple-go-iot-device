@@ -17,7 +17,7 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
+	// "encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -29,7 +29,7 @@ import (
 	"github.com/randyridgley/simple-go-iot-device/device"
 	"github.com/randyridgley/simple-go-iot-device/device/connect"
 	"github.com/randyridgley/simple-go-iot-device/device/provision"
-	"github.com/randyridgley/simple-go-iot-device/device/shadow"
+	// "github.com/randyridgley/simple-go-iot-device/device/shadow"
 )
 
 var configuration config.Configurations
@@ -54,8 +54,7 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+		ctx, _ := context.WithCancel(context.Background())
 
 		err := viper.Unmarshal(&configuration)
 		if err != nil {
@@ -100,13 +99,14 @@ to quickly create a Cobra application.`,
 				panic(err)
 			}
 
-			go p.Provision(ctx)
-			fmt.Println("Waiting for provisioning.")
-			<-p.Channels.ProvisionChan
-			p.Disconnect(ctx)
-			fmt.Println("Thing provisioning completed.")
+			// $aws/certificates/create/json
+			// $aws/certificates/create/json/accepted or $aws/certificates/create/json/rejected
+			// publish thing
+			// accepted or rejected
+			p.Provision(ctx)
 		}
 
+		fmt.Println("Starting up thing on own channel")
 		keyPair := connect.KeyPair{
 			PrivateKeyPath:    configuration.Primary.PrivateKeyPath,
 			CertificatePath:   configuration.Primary.CertificatePath,
@@ -123,49 +123,49 @@ to quickly create a Cobra application.`,
 		thing.Connection.Publish("fleet/2974685", payload)
 		fmt.Println("Published message")
 
-		s, err := shadow.New(ctx, *thing)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println("Shadow created")
-
-		s.OnError(func(err error) {
-			fmt.Printf("async error: %v\n", err)
-		})
-		s.OnDelta(func(delta map[string]interface{}) {
-			fmt.Printf("delta: %+v\n", delta)
-		})
-
-		fmt.Println("Registered Error and Delta Handlers")
-
-		fmt.Print("> update desire\n")
-		doc, err := s.Desire(ctx, sampleState{Value: 1, Struct: sampleStruct{Values: []int{1, 2}}})
-		fmt.Println(err)
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("document: %+v\n", doc)
-
-		fmt.Print("> update report\n")
-		doc, err = s.Report(ctx, sampleState{Value: 2, Struct: sampleStruct{Values: []int{1, 2}}})
-		if err != nil {
-			panic(err)
-		}
-		fmt.Printf("document: %+v\n", doc)
-
-		fmt.Print("> get document\n")
-		doc, err = s.Get(ctx)
-		if err != nil {
-			panic(err)
-		}
-
-		b, err := json.Marshal(doc)
-		fmt.Printf("%s", b)
-		// fmt.Printf("document: %+v\n", doc)
-		// } else {
-		// 	fmt.Println("Did not connect successfully")
-		// 	quit <- struct{}{}
+		// s, err := shadow.New(ctx, *thing)
+		// if err != nil {
+		// 	panic(err)
 		// }
+		// fmt.Println("Shadow created")
+
+		// s.OnError(func(err error) {
+		// 	fmt.Printf("async error: %v\n", err)
+		// })
+		// s.OnDelta(func(delta map[string]interface{}) {
+		// 	fmt.Printf("delta: %+v\n", delta)
+		// })
+
+		// fmt.Println("Registered Error and Delta Handlers")
+
+		// fmt.Print("> update desire\n")
+		// doc, err := s.Desire(ctx, sampleState{Value: 1, Struct: sampleStruct{Values: []int{1, 2}}})
+		// fmt.Println(err)
+		// if err != nil {
+		// 	panic(err)
+		// }
+		// fmt.Printf("document: %+v\n", doc)
+
+		// fmt.Print("> update report\n")
+		// doc, err = s.Report(ctx, sampleState{Value: 2, Struct: sampleStruct{Values: []int{1, 2}}})
+		// if err != nil {
+		// 	panic(err)
+		// }
+		// fmt.Printf("document: %+v\n", doc)
+
+		// fmt.Print("> get document\n")
+		// doc, err = s.Get(ctx)
+		// if err != nil {
+		// 	panic(err)
+		// }
+
+		// b, err := json.Marshal(doc)
+		// fmt.Printf("%s", b)
+		// // fmt.Printf("document: %+v\n", doc)
+		// // } else {
+		// // 	fmt.Println("Did not connect successfully")
+		// // 	quit <- struct{}{}
+		// // }
 		<-quit
 	},
 }

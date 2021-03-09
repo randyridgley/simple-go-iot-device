@@ -47,7 +47,6 @@ func New(config *ConnectionConfiguration) (Connection, error) {
 	}
 
 	certs := x509.NewCertPool()
-
 	caPEM, err := ioutil.ReadFile(config.KeyPair.CACertificatePath)
 
 	if err != nil {
