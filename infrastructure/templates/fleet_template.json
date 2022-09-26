@@ -1,0 +1,94 @@
+{
+	"Parameters": {
+		"serialNumber": {
+			"Type": "String"
+		},
+		"deviceLocation": {
+			"Type": "String"
+        },
+        "thingName": {
+            "Type": "String"
+        }
+	},
+	"Mappings": {
+		"LocationTable": {
+			"Berlin": {
+				"LocationUrl": "https://www.berlin.de"
+			},
+			"Seattle": {
+				"LocationUrl": "https://www.seattle.gov"
+			},
+			"USA": {
+				"LocationUrl": "https://ameri.ca"
+			}
+		}
+	},
+	"Resources": {
+		"thing": {
+			"Type": "AWS::IoT::Thing",
+			"Properties": {
+				"AttributePayload": {
+					"version": "v1",
+					"serialNumber": {
+						"Ref": "serialNumber"
+					}
+				},
+				"ThingName": {
+					"Fn::Join": ["", ["fleety_", {
+						"Ref": "serialNumber"
+					}]]
+				},
+				"ThingGroups": ["fleet-provisioning-group"]
+			},
+			"OverrideSettings": {
+				"AttributePayload": "MERGE",
+				"ThingTypeName": "REPLACE",
+				"ThingGroups": "REPLACE"
+			}
+		},
+		"certificate": {
+			"Type": "AWS::IoT::Certificate",
+			"Properties": {
+				"CertificateId": {
+					"Ref": "AWS::IoT::Certificate::Id"
+				},
+				"Status": "Active"
+			}
+		},
+		"policy": {
+			"Type": "AWS::IoT::Policy",
+			"Properties": {
+				"PolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Effect": "Allow",
+						"Action": ["iot:Publish", "iot:Receive"],
+						"Resource": [
+                            "arn:aws:iot:*:*:topic/fleet/*",
+                            "arn:aws:iot:*:*:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/*"
+                        ]
+					}, {
+						"Effect": "Allow",
+						"Action": ["iot:Subscribe"],
+						"Resource": [
+                            "arn:aws:iot:*:*:topicfilter/fleet/*",
+                            "arn:aws:iot:*:*:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/*"
+                        ]
+					}, {
+						"Effect": "Allow",
+						"Action": ["iot:Connect"],
+						"Resource": "*"
+					}]
+				}
+			}
+		}
+	},
+	"DeviceConfiguration": {
+		"FallbackUrl": "https://www.example.com/test-site",
+		"LocationUrl": {
+			"Fn::FindInMap": ["LocationTable", {
+				"Ref": "deviceLocation"
+			}, "LocationUrl"]
+		}
+	}
+}

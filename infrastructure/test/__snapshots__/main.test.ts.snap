@@ -1,0 +1,774 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`Snapshot 1`] = `
+{
+  "Parameters": {
+    "BootstrapVersion": {
+      "Default": "/cdk-bootstrap/hnb659fds/version",
+      "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]",
+      "Type": "AWS::SSM::Parameter::Value<String>",
+    },
+    "certificateArn": {
+      "Description": "IoT Certificate ARN taken from the create-keys-and-certs.sh script",
+      "Type": "String",
+    },
+  },
+  "Resources": {
+    "CRProviderframeworkonEvent99E7317F": {
+      "DependsOn": [
+        "CRProviderframeworkonEventServiceRoleDefaultPolicy42C4C822",
+        "CRProviderframeworkonEventServiceRole7EED8AD9",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "e7c95e1a12d903d913ebdd526c735f1ac58b2024882a5562110221fe685ebe85.zip",
+        },
+        "Description": "AWS CDK resource provider framework - onEvent (test/CRProvider)",
+        "Environment": {
+          "Variables": {
+            "USER_ON_EVENT_FUNCTION_ARN": {
+              "Fn::GetAtt": [
+                "ThingGroupCreationHandlerA2C1E68E",
+                "Arn",
+              ],
+            },
+          },
+        },
+        "Handler": "framework.onEvent",
+        "Role": {
+          "Fn::GetAtt": [
+            "CRProviderframeworkonEventServiceRole7EED8AD9",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs14.x",
+        "Timeout": 900,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "CRProviderframeworkonEventLogRetention668B752E": {
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Join": [
+            "",
+            [
+              "/aws/lambda/",
+              {
+                "Ref": "CRProviderframeworkonEvent99E7317F",
+              },
+            ],
+          ],
+        },
+        "RetentionInDays": 1,
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A",
+            "Arn",
+          ],
+        },
+      },
+      "Type": "Custom::LogRetention",
+    },
+    "CRProviderframeworkonEventServiceRole7EED8AD9": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "CRProviderframeworkonEventServiceRoleDefaultPolicy42C4C822": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "lambda:InvokeFunction",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "ThingGroupCreationHandlerA2C1E68E",
+                    "Arn",
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      {
+                        "Fn::GetAtt": [
+                          "ThingGroupCreationHandlerA2C1E68E",
+                          "Arn",
+                        ],
+                      },
+                      ":*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "CRProviderframeworkonEventServiceRoleDefaultPolicy42C4C822",
+        "Roles": [
+          {
+            "Ref": "CRProviderframeworkonEventServiceRole7EED8AD9",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "FleetProvisioningPolicy": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "iot:Connect",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+            {
+              "Action": [
+                "iot:Publish",
+                "iot:Receive",
+              ],
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:iot:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":topic/$aws/certificates/create/*",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:iot:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":topic/$aws/provisioning-templates/GoFleetProvisioningTemplate/provision/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+            {
+              "Action": "iot:Subscribe",
+              "Effect": "Allow",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:iot:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":topicfilter/$aws/certificates/create/*",
+                    ],
+                  ],
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:aws:iot:",
+                      {
+                        "Ref": "AWS::Region",
+                      },
+                      ":",
+                      {
+                        "Ref": "AWS::AccountId",
+                      },
+                      ":topicfilter/$aws/provisioning-templates/GoFleetProvisioningTemplate/provision/*",
+                    ],
+                  ],
+                },
+              ],
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "GoIoTFleetProvisioningPolicy",
+      },
+      "Type": "AWS::IoT::Policy",
+    },
+    "FleetProvisioningTemplate": {
+      "Properties": {
+        "Description": "Fleet Provisioning Template for Go IoT Devices",
+        "Enabled": true,
+        "PreProvisioningHook": {
+          "PayloadVersion": "2020-04-01",
+          "TargetArn": {
+            "Fn::GetAtt": [
+              "PreProvisionHookFunction5604AADC",
+              "Arn",
+            ],
+          },
+        },
+        "ProvisioningRoleArn": {
+          "Fn::GetAtt": [
+            "iotProvisioningHookRoleC92AB850",
+            "Arn",
+          ],
+        },
+        "TemplateBody": "{
+	"Parameters": {
+		"serialNumber": {
+			"Type": "String"
+		},
+		"deviceLocation": {
+			"Type": "String"
+        },
+        "thingName": {
+            "Type": "String"
+        }
+	},
+	"Mappings": {
+		"LocationTable": {
+			"Berlin": {
+				"LocationUrl": "https://www.berlin.de"
+			},
+			"Seattle": {
+				"LocationUrl": "https://www.seattle.gov"
+			},
+			"USA": {
+				"LocationUrl": "https://ameri.ca"
+			}
+		}
+	},
+	"Resources": {
+		"thing": {
+			"Type": "AWS::IoT::Thing",
+			"Properties": {
+				"AttributePayload": {
+					"version": "v1",
+					"serialNumber": {
+						"Ref": "serialNumber"
+					}
+				},
+				"ThingName": {
+					"Fn::Join": ["", ["fleety_", {
+						"Ref": "serialNumber"
+					}]]
+				},
+				"ThingGroups": ["fleet-provisioning-group"]
+			},
+			"OverrideSettings": {
+				"AttributePayload": "MERGE",
+				"ThingTypeName": "REPLACE",
+				"ThingGroups": "REPLACE"
+			}
+		},
+		"certificate": {
+			"Type": "AWS::IoT::Certificate",
+			"Properties": {
+				"CertificateId": {
+					"Ref": "AWS::IoT::Certificate::Id"
+				},
+				"Status": "Active"
+			}
+		},
+		"policy": {
+			"Type": "AWS::IoT::Policy",
+			"Properties": {
+				"PolicyDocument": {
+					"Version": "2012-10-17",
+					"Statement": [{
+						"Effect": "Allow",
+						"Action": ["iot:Publish", "iot:Receive"],
+						"Resource": [
+                            "arn:aws:iot:*:*:topic/fleet/*",
+                            "arn:aws:iot:*:*:topic/$aws/things/\${iot:Connection.Thing.ThingName}/shadow/*"
+                        ]
+					}, {
+						"Effect": "Allow",
+						"Action": ["iot:Subscribe"],
+						"Resource": [
+                            "arn:aws:iot:*:*:topicfilter/fleet/*",
+                            "arn:aws:iot:*:*:topicfilter/$aws/things/\${iot:Connection.Thing.ThingName}/shadow/*"
+                        ]
+					}, {
+						"Effect": "Allow",
+						"Action": ["iot:Connect"],
+						"Resource": "*"
+					}]
+				}
+			}
+		}
+	},
+	"DeviceConfiguration": {
+		"FallbackUrl": "https://www.example.com/test-site",
+		"LocationUrl": {
+			"Fn::FindInMap": ["LocationTable", {
+				"Ref": "deviceLocation"
+			}, "LocationUrl"]
+		}
+	}
+}",
+        "TemplateName": "GoFleetProvisioningTemplate",
+      },
+      "Type": "AWS::IoT::ProvisioningTemplate",
+    },
+    "IotPolicyPrincipalAttachment": {
+      "DependsOn": [
+        "FleetProvisioningPolicy",
+      ],
+      "Properties": {
+        "PolicyName": "GoIoTFleetProvisioningPolicy",
+        "Principal": {
+          "Ref": "certificateArn",
+        },
+      },
+      "Type": "AWS::IoT::PolicyPrincipalAttachment",
+    },
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aFD4BFC8A": {
+      "DependsOn": [
+        "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
+        "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "eb5b005c858404ea0c8f68098ed5dcdf5340e02461f149751d10f59c210d5ef8.zip",
+        },
+        "Handler": "index.handler",
+        "Role": {
+          "Fn::GetAtt": [
+            "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
+            "Arn",
+          ],
+        },
+        "Runtime": "nodejs14.x",
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "logs:PutRetentionPolicy",
+                "logs:DeleteRetentionPolicy",
+              ],
+              "Effect": "Allow",
+              "Resource": "*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRoleDefaultPolicyADDA7DEB",
+        "Roles": [
+          {
+            "Ref": "LogRetentionaae0aa3c5b4d4f87b02d85b201efdd8aServiceRole9741ECFB",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "PreProvisionHookFunction5604AADC": {
+      "DependsOn": [
+        "PreProvisionHookFunctionServiceRoleDefaultPolicy08E94FD5",
+        "PreProvisionHookFunctionServiceRole387574BF",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "8ea8467e8245967b31d94571450b365f90ebc4687f818f7fb897b3b871ba8ede.zip",
+        },
+        "Description": "Pre Provision Hook for IoT Thing Provisioning",
+        "FunctionName": "iot-pre-provision-hook",
+        "Handler": "lambda.lambda_handler",
+        "MemorySize": 256,
+        "Role": {
+          "Fn::GetAtt": [
+            "PreProvisionHookFunctionServiceRole387574BF",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.8",
+        "Timeout": 30,
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "PreProvisionHookFunctionInvokeX1kgdpeq4A1b3T4Qgx5teuCJ9kkxQXuTuwWc9FHExDE8FBBA364": {
+      "Properties": {
+        "Action": "lambda:InvokeFunction",
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "PreProvisionHookFunction5604AADC",
+            "Arn",
+          ],
+        },
+        "Principal": "iot.amazonaws.com",
+      },
+      "Type": "AWS::Lambda::Permission",
+    },
+    "PreProvisionHookFunctionServiceRole387574BF": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+              ],
+            ],
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "PreProvisionHookFunctionServiceRoleDefaultPolicy08E94FD5": {
+      "Properties": {
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents",
+              ],
+              "Effect": "Allow",
+              "Resource": "arn:aws:logs:*:*:*",
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "PolicyName": "PreProvisionHookFunctionServiceRoleDefaultPolicy08E94FD5",
+        "Roles": [
+          {
+            "Ref": "PreProvisionHookFunctionServiceRole387574BF",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Policy",
+    },
+    "Role1ABCC5F0": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "logs:CreateLogGroup",
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents",
+                  ],
+                  "Effect": "Allow",
+                  "Resource": {
+                    "Fn::Join": [
+                      "",
+                      [
+                        "arn:",
+                        {
+                          "Ref": "AWS::Partition",
+                        },
+                        ":logs:",
+                        {
+                          "Ref": "AWS::Region",
+                        },
+                        ":",
+                        {
+                          "Ref": "AWS::AccountId",
+                        },
+                        ":log-group:/aws/lambda/*",
+                      ],
+                    ],
+                  },
+                },
+              ],
+              "Version": "2012-10-17",
+            },
+            "PolicyName": "CloudWatchLogsPolicy",
+          },
+          {
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "iot:CreateThingGroup",
+                    "iot:DeleteThingGroup",
+                  ],
+                  "Effect": "Allow",
+                  "Resource": "*",
+                },
+              ],
+              "Version": "2012-10-17",
+            },
+            "PolicyName": "IotThingPolicy",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+    "StackOutputs": {
+      "DeletionPolicy": "Delete",
+      "Properties": {
+        "ServiceToken": {
+          "Fn::GetAtt": [
+            "CRProviderframeworkonEvent99E7317F",
+            "Arn",
+          ],
+        },
+        "regionName": {
+          "Ref": "AWS::Region",
+        },
+        "stackName": "Stack",
+        "thingGroupName": "fleet-provisioning-group",
+      },
+      "Type": "AWS::CloudFormation::CustomResource",
+      "UpdateReplacePolicy": "Delete",
+    },
+    "ThingGroupCreationHandlerA2C1E68E": {
+      "DependsOn": [
+        "Role1ABCC5F0",
+      ],
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Fn::Sub": "cdk-hnb659fds-assets-\${AWS::AccountId}-\${AWS::Region}",
+          },
+          "S3Key": "39e6a48944746916f088c215cdb4a77df9d5753bf6c9231b60e8988cae3d2f0c.zip",
+        },
+        "Handler": "index.on_event",
+        "Role": {
+          "Fn::GetAtt": [
+            "Role1ABCC5F0",
+            "Arn",
+          ],
+        },
+        "Runtime": "python3.8",
+      },
+      "Type": "AWS::Lambda::Function",
+    },
+    "iotProvisioningHookRoleC92AB850": {
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [
+            {
+              "Action": "sts:AssumeRole",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "iot.amazonaws.com",
+              },
+            },
+          ],
+          "Version": "2012-10-17",
+        },
+        "ManagedPolicyArns": [
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSIoTThingsRegistration",
+              ],
+            ],
+          },
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSIoTLogging",
+              ],
+            ],
+          },
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/AmazonS3ReadOnlyAccess",
+              ],
+            ],
+          },
+          {
+            "Fn::Join": [
+              "",
+              [
+                "arn:",
+                {
+                  "Ref": "AWS::Partition",
+                },
+                ":iam::aws:policy/service-role/AWSIoTRuleActions",
+              ],
+            ],
+          },
+        ],
+        "Policies": [
+          {
+            "PolicyDocument": {
+              "Statement": [
+                {
+                  "Action": [
+                    "iotsitewise:BatchPutAssetPropertyValue",
+                    "iotanalytics:BatchPutMessage",
+                    "iotevents:BatchPutMessage",
+                  ],
+                  "Effect": "Allow",
+                  "Resource": "*",
+                },
+              ],
+              "Version": "2012-10-17",
+            },
+            "PolicyName": "IoTAddOnPolicy",
+          },
+        ],
+      },
+      "Type": "AWS::IAM::Role",
+    },
+  },
+  "Rules": {
+    "CheckBootstrapVersion": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Contains": [
+                  [
+                    "1",
+                    "2",
+                    "3",
+                    "4",
+                    "5",
+                  ],
+                  {
+                    "Ref": "BootstrapVersion",
+                  },
+                ],
+              },
+            ],
+          },
+          "AssertDescription": "CDK bootstrap stack version 6 required. Please run 'cdk bootstrap' with a recent version of the CDK CLI.",
+        },
+      ],
+    },
+  },
+}
+`;
